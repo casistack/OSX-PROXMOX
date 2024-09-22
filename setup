@@ -1853,88 +1853,84 @@ then
 
     # Function to get current value
     get_current_value() {
-        xmlstarlet sel -t -v "$1" "$CONFIG_PLIST"
+        xmlstarlet sel -t -v "$1" "$CONFIG_PLIST" 2>/dev/null || echo "Not set"
     }
 
     # Function to update plist value
     update_plist() {
         key=$1
         value=$2
-        section=$3
+        xpath=$3
         
         if [ -z "$value" ]; then
             echo "Keeping current value."
         else
-            if xmlstarlet sel -t -v "$section/$key" "$CONFIG_PLIST" >/dev/null 2>&1; then
-                xmlstarlet ed --inplace -u "$section/$key" -v "$value" "$CONFIG_PLIST"
-            else
-                xmlstarlet ed --inplace -s "$section" -t elem -n "$key" -v "$value" "$CONFIG_PLIST"
-            fi
+            xmlstarlet ed --inplace -u "$xpath" -v "$value" "$CONFIG_PLIST"
             echo "Updated to: $value"
         fi
     }
 
     # SMBIOS Settings
     echo "SMBIOS Settings:"
-    current_product=$(get_current_value "PlatformInfo/Generic/SystemProductName")
+    current_product=$(get_current_value "//dict/key[.='SystemProductName']/following-sibling::string[1]")
     echo -n "Enter SystemProductName (current: $current_product): "
     read SYSTEM_PRODUCT_NAME
-    update_plist SystemProductName "$SYSTEM_PRODUCT_NAME" "PlatformInfo/Generic"
+    update_plist SystemProductName "$SYSTEM_PRODUCT_NAME" "//dict/key[.='SystemProductName']/following-sibling::string[1]"
 
-    current_serial=$(get_current_value "PlatformInfo/Generic/SystemSerialNumber")
+    current_serial=$(get_current_value "//dict/key[.='SystemSerialNumber']/following-sibling::string[1]")
     echo -n "Enter SystemSerialNumber (current: $current_serial): "
     read SYSTEM_SERIAL_NUMBER
-    update_plist SystemSerialNumber "$SYSTEM_SERIAL_NUMBER" "PlatformInfo/Generic"
+    update_plist SystemSerialNumber "$SYSTEM_SERIAL_NUMBER" "//dict/key[.='SystemSerialNumber']/following-sibling::string[1]"
 
     # Kernel Quirks
     echo " "
     echo "Kernel Quirks:"
-    current_xcpm=$(get_current_value "Kernel/Quirks/AppleXcpmCfgLock")
+    current_xcpm=$(get_current_value "//dict/key[.='AppleXcpmCfgLock']/following-sibling::*[1]")
     echo -n "Enable AppleXcpmCfgLock? [Y/N] (current: $current_xcpm): "
     read XCPM_CFG_LOCK
     if [[ $XCPM_CFG_LOCK =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -u "Kernel/Quirks/AppleXcpmCfgLock" -v "true" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='AppleXcpmCfgLock']/following-sibling::*[1]" -v "true" "$CONFIG_PLIST"
     elif [[ $XCPM_CFG_LOCK =~ ^[Nn]$ ]]; then
-        xmlstarlet ed --inplace -u "Kernel/Quirks/AppleXcpmCfgLock" -v "false" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='AppleXcpmCfgLock']/following-sibling::*[1]" -v "false" "$CONFIG_PLIST"
     fi
 
-    current_cpupm=$(get_current_value "Kernel/Quirks/AppleCpuPmCfgLock")
+    current_cpupm=$(get_current_value "//dict/key[.='AppleCpuPmCfgLock']/following-sibling::*[1]")
     echo -n "Enable AppleCpuPmCfgLock? [Y/N] (current: $current_cpupm): "
     read CPU_PM_CFG_LOCK
     if [[ $CPU_PM_CFG_LOCK =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -u "Kernel/Quirks/AppleCpuPmCfgLock" -v "true" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='AppleCpuPmCfgLock']/following-sibling::*[1]" -v "true" "$CONFIG_PLIST"
     elif [[ $CPU_PM_CFG_LOCK =~ ^[Nn]$ ]]; then
-        xmlstarlet ed --inplace -u "Kernel/Quirks/AppleCpuPmCfgLock" -v "false" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='AppleCpuPmCfgLock']/following-sibling::*[1]" -v "false" "$CONFIG_PLIST"
     fi
 
     # Booter Quirks
     echo " "
     echo "Booter Quirks:"
-    current_mmio=$(get_current_value "Booter/Quirks/DevirtualiseMmio")
+    current_mmio=$(get_current_value "//dict/key[.='DevirtualiseMmio']/following-sibling::*[1]")
     echo -n "Enable DevirtualiseMmio? [Y/N] (current: $current_mmio): "
     read DEVIRTUALISE_MMIO
     if [[ $DEVIRTUALISE_MMIO =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -u "Booter/Quirks/DevirtualiseMmio" -v "true" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='DevirtualiseMmio']/following-sibling::*[1]" -v "true" "$CONFIG_PLIST"
     elif [[ $DEVIRTUALISE_MMIO =~ ^[Nn]$ ]]; then
-        xmlstarlet ed --inplace -u "Booter/Quirks/DevirtualiseMmio" -v "false" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='DevirtualiseMmio']/following-sibling::*[1]" -v "false" "$CONFIG_PLIST"
     fi
 
     # Boot Args
     echo " "
     echo "Boot Arguments:"
-    CURRENT_BOOT_ARGS=$(get_current_value "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/boot-args")
+    CURRENT_BOOT_ARGS=$(get_current_value "//dict/key[.='boot-args']/following-sibling::string[1]")
     echo "Current boot-args: $CURRENT_BOOT_ARGS"
     echo -n "Enter additional boot-args (or press Enter to keep current): "
     read NEW_BOOT_ARGS
     if [ ! -z "$NEW_BOOT_ARGS" ]; then
         UPDATED_BOOT_ARGS="$CURRENT_BOOT_ARGS $NEW_BOOT_ARGS"
-        xmlstarlet ed --inplace -u "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/boot-args" -v "$UPDATED_BOOT_ARGS" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='boot-args']/following-sibling::string[1]" -v "$UPDATED_BOOT_ARGS" "$CONFIG_PLIST"
     fi
 
     # SecureBootModel
     echo " "
     echo "SecureBootModel:"
-    current_sbm=$(get_current_value "Misc/Security/SecureBootModel")
+    current_sbm=$(get_current_value "//dict/key[.='SecureBootModel']/following-sibling::string[1]")
     echo "Current SecureBootModel: $current_sbm"
     echo "1) Disabled"
     echo "2) Default"
@@ -1978,24 +1974,24 @@ then
         "") SBM="" ;;
         *) SBM="Default" ;;
     esac
-    update_plist SecureBootModel "$SBM" "Misc/Security"
+    update_plist SecureBootModel "$SBM" "//dict/key[.='SecureBootModel']/following-sibling::string[1]"
 
     # ScanPolicy
     echo " "
     echo "ScanPolicy:"
-    current_scanpolicy=$(get_current_value "Misc/Security/ScanPolicy")
+    current_scanpolicy=$(get_current_value "//dict/key[.='ScanPolicy']/following-sibling::integer[1]")
     echo -n "Enter ScanPolicy (current: $current_scanpolicy, recommended: 0): "
     read SCAN_POLICY
-    update_plist ScanPolicy "${SCAN_POLICY:-$current_scanpolicy}" "Misc/Security"
+    update_plist ScanPolicy "${SCAN_POLICY:-$current_scanpolicy}" "//dict/key[.='ScanPolicy']/following-sibling::integer[1]"
 
     # NVRAM Settings
     echo " "
     echo "NVRAM Settings:"
-    current_sip=$(get_current_value "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/csr-active-config")
+    current_sip=$(get_current_value "//dict/key[.='csr-active-config']/following-sibling::data[1]")
     echo -n "Set csr-active-config to disable SIP? [Y/N] (current: $current_sip): "
     read DISABLE_SIP
     if [[ $DISABLE_SIP =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -u "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/csr-active-config" -v "FF0F0000" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='csr-active-config']/following-sibling::data[1]" -v "FF0F0000" "$CONFIG_PLIST"
     fi
 
     # GPU Configuration
@@ -2008,14 +2004,14 @@ then
     read GPU_TYPE
     case $GPU_TYPE in
         1)  # Intel GPU
-            xmlstarlet ed --inplace -u "DeviceProperties/Add/PciRoot(0x0)/Pci(0x2,0x0)/AAPL,ig-platform-id" -v "0300C89B" "$CONFIG_PLIST"
+            xmlstarlet ed --inplace -u "//dict/key[.='AAPL,ig-platform-id']/following-sibling::data[1]" -v "0300C89B" "$CONFIG_PLIST"
             ;;
         2)  # AMD GPU
-            xmlstarlet ed --inplace -u "DeviceProperties/Add/PciRoot(0x0)/Pci(0x1,0x0)/device-id" -v "67DF0000" "$CONFIG_PLIST"
-            xmlstarlet ed --inplace -u "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/agdpmod" -v "pikera" "$CONFIG_PLIST"
+            xmlstarlet ed --inplace -u "//dict/key[.='device-id']/following-sibling::data[1]" -v "67DF0000" "$CONFIG_PLIST"
+            xmlstarlet ed --inplace -u "//dict/key[.='agdpmod']/following-sibling::string[1]" -v "pikera" "$CONFIG_PLIST"
             ;;
         3)  # NVIDIA GPU
-            xmlstarlet ed --inplace -u "DeviceProperties/Add/PciRoot(0x0)/Pci(0x1,0x0)/device-id" -v "13C20000" "$CONFIG_PLIST"
+            xmlstarlet ed --inplace -u "//dict/key[.='device-id']/following-sibling::data[1]" -v "13C20000" "$CONFIG_PLIST"
             ;;
         *)  echo "Invalid option. Skipping GPU configuration." ;;
     esac
@@ -2026,56 +2022,56 @@ then
     echo -n "Enable VirtualSMC? [Y/N]: "
     read ENABLE_VSMC
     if [[ $ENABLE_VSMC =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -s "Kernel/Add" -t elem -n "dict" -v "" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "BundlePath" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "string" -v "VirtualSMC.kext" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "Enabled" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "true" -v "" \
+        xmlstarlet ed --inplace -s "//dict[key='Kernel']/dict[key='Add']" -t elem -n "dict" -v "" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "key" -v "BundlePath" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "string" -v "VirtualSMC.kext" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "key" -v "Enabled" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "true" -v "" \
             "$CONFIG_PLIST"
     fi
 
     echo -n "Enable Lilu? [Y/N]: "
     read ENABLE_LILU
     if [[ $ENABLE_LILU =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -s "Kernel/Add" -t elem -n "dict" -v "" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "BundlePath" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "string" -v "Lilu.kext" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "Enabled" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "true" -v "" \
+        xmlstarlet ed --inplace -s "//dict[key='Kernel']/dict[key='Add']" -t elem -n "dict" -v "" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "key" -v "BundlePath" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "string" -v "Lilu.kext" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "key" -v "Enabled" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "true" -v "" \
             "$CONFIG_PLIST"
     fi
 
     echo -n "Enable WhateverGreen? [Y/N]: "
     read ENABLE_WEG
     if [[ $ENABLE_WEG =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -s "Kernel/Add" -t elem -n "dict" -v "" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "BundlePath" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "string" -v "WhateverGreen.kext" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "Enabled" \
-            -s "Kernel/Add/dict[last()]" -t elem -n "true" -v "" \
+        xmlstarlet ed --inplace -s "//dict[key='Kernel']/dict[key='Add']" -t elem -n "dict" -v "" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "key" -v "BundlePath" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "string" -v "WhateverGreen.kext" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "key" -v "Enabled" \
+            -s "//dict[key='Kernel']/dict[key='Add']/dict[last()]" -t elem -n "true" -v "" \
             "$CONFIG_PLIST"
     fi
 
-    # UEFI Settings
+ # UEFI Settings
     echo " "
     echo "UEFI Settings:"
-    current_consolegop=$(get_current_value "UEFI/Output/ProvideConsoleGop")
+    current_consolegop=$(get_current_value "//dict/key[.='ProvideConsoleGop']/following-sibling::*[1]")
     echo -n "Enable ProvideConsoleGop? [Y/N] (current: $current_consolegop): "
     read ENABLE_CONSOLE_GOP
     if [[ $ENABLE_CONSOLE_GOP =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -u "UEFI/Output/ProvideConsoleGop" -v "true" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='ProvideConsoleGop']/following-sibling::*[1]" -v "true" "$CONFIG_PLIST"
     elif [[ $ENABLE_CONSOLE_GOP =~ ^[Nn]$ ]]; then
-        xmlstarlet ed --inplace -u "UEFI/Output/ProvideConsoleGop" -v "false" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='ProvideConsoleGop']/following-sibling::*[1]" -v "false" "$CONFIG_PLIST"
     fi
 
-    current_gpubars=$(get_current_value "UEFI/Quirks/ResizeGpuBars")
+    current_gpubars=$(get_current_value "//dict/key[.='ResizeGpuBars']/following-sibling::integer[1]")
     echo -n "Set ResizeGpuBars to -1? [Y/N] (current: $current_gpubars): "
     read RESIZE_GPU_BARS
     if [[ $RESIZE_GPU_BARS =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -u "UEFI/Quirks/ResizeGpuBars" -v "-1" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "//dict/key[.='ResizeGpuBars']/following-sibling::integer[1]" -v "-1" "$CONFIG_PLIST"
     fi
 
-# Save changes
+    # Save changes
     echo " "
     echo "Saving changes..."
     umount /mnt/opencore >> ${LOGFILE} 2>> ${LOGFILE}
