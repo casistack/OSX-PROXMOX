@@ -1851,71 +1851,91 @@ then
 
     CONFIG_PLIST="/mnt/opencore/EFI/OC/config.plist"
 
+    # Function to get current value
+    get_current_value() {
+        xmlstarlet sel -t -v "$1" "$CONFIG_PLIST"
+    }
+
     # Function to update plist value
     update_plist() {
         key=$1
         value=$2
         section=$3
         
-        # Check if the key already exists
-        if xmlstarlet sel -t -v "$section/$key" "$CONFIG_PLIST" >/dev/null 2>&1; then
-            # Update existing key
-            xmlstarlet ed --inplace -u "$section/$key" -v "$value" "$CONFIG_PLIST"
+        if [ -z "$value" ]; then
+            echo "Keeping current value."
         else
-            # Add new key
-            xmlstarlet ed --inplace -s "$section" -t elem -n "$key" -v "$value" "$CONFIG_PLIST"
+            if xmlstarlet sel -t -v "$section/$key" "$CONFIG_PLIST" >/dev/null 2>&1; then
+                xmlstarlet ed --inplace -u "$section/$key" -v "$value" "$CONFIG_PLIST"
+            else
+                xmlstarlet ed --inplace -s "$section" -t elem -n "$key" -v "$value" "$CONFIG_PLIST"
+            fi
+            echo "Updated to: $value"
         fi
     }
 
     # SMBIOS Settings
     echo "SMBIOS Settings:"
-    echo -n "Enter SystemProductName (e.g., iMacPro1,1): "
+    current_product=$(get_current_value "PlatformInfo/Generic/SystemProductName")
+    echo -n "Enter SystemProductName (current: $current_product): "
     read SYSTEM_PRODUCT_NAME
     update_plist SystemProductName "$SYSTEM_PRODUCT_NAME" "PlatformInfo/Generic"
 
-    echo -n "Enter SystemSerialNumber: "
+    current_serial=$(get_current_value "PlatformInfo/Generic/SystemSerialNumber")
+    echo -n "Enter SystemSerialNumber (current: $current_serial): "
     read SYSTEM_SERIAL_NUMBER
     update_plist SystemSerialNumber "$SYSTEM_SERIAL_NUMBER" "PlatformInfo/Generic"
 
     # Kernel Quirks
     echo " "
     echo "Kernel Quirks:"
-    echo -n "Enable AppleXcpmCfgLock? [Y/N]: "
+    current_xcpm=$(get_current_value "Kernel/Quirks/AppleXcpmCfgLock")
+    echo -n "Enable AppleXcpmCfgLock? [Y/N] (current: $current_xcpm): "
     read XCPM_CFG_LOCK
     if [[ $XCPM_CFG_LOCK =~ ^[Yy]$ ]]; then
         xmlstarlet ed --inplace -u "Kernel/Quirks/AppleXcpmCfgLock" -v "true" "$CONFIG_PLIST"
+    elif [[ $XCPM_CFG_LOCK =~ ^[Nn]$ ]]; then
+        xmlstarlet ed --inplace -u "Kernel/Quirks/AppleXcpmCfgLock" -v "false" "$CONFIG_PLIST"
     fi
 
-    echo -n "Enable AppleCpuPmCfgLock? [Y/N]: "
+    current_cpupm=$(get_current_value "Kernel/Quirks/AppleCpuPmCfgLock")
+    echo -n "Enable AppleCpuPmCfgLock? [Y/N] (current: $current_cpupm): "
     read CPU_PM_CFG_LOCK
     if [[ $CPU_PM_CFG_LOCK =~ ^[Yy]$ ]]; then
         xmlstarlet ed --inplace -u "Kernel/Quirks/AppleCpuPmCfgLock" -v "true" "$CONFIG_PLIST"
+    elif [[ $CPU_PM_CFG_LOCK =~ ^[Nn]$ ]]; then
+        xmlstarlet ed --inplace -u "Kernel/Quirks/AppleCpuPmCfgLock" -v "false" "$CONFIG_PLIST"
     fi
 
     # Booter Quirks
     echo " "
     echo "Booter Quirks:"
-    echo -n "Enable DevirtualiseMmio? [Y/N]: "
+    current_mmio=$(get_current_value "Booter/Quirks/DevirtualiseMmio")
+    echo -n "Enable DevirtualiseMmio? [Y/N] (current: $current_mmio): "
     read DEVIRTUALISE_MMIO
     if [[ $DEVIRTUALISE_MMIO =~ ^[Yy]$ ]]; then
         xmlstarlet ed --inplace -u "Booter/Quirks/DevirtualiseMmio" -v "true" "$CONFIG_PLIST"
+    elif [[ $DEVIRTUALISE_MMIO =~ ^[Nn]$ ]]; then
+        xmlstarlet ed --inplace -u "Booter/Quirks/DevirtualiseMmio" -v "false" "$CONFIG_PLIST"
     fi
 
     # Boot Args
     echo " "
     echo "Boot Arguments:"
-    CURRENT_BOOT_ARGS=$(xmlstarlet sel -t -v "//dict[key='7C436110-AB2A-4BBB-A880-FE41995C9F82']/dict[key='boot-args']/string" "$CONFIG_PLIST")
+    CURRENT_BOOT_ARGS=$(get_current_value "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/boot-args")
     echo "Current boot-args: $CURRENT_BOOT_ARGS"
     echo -n "Enter additional boot-args (or press Enter to keep current): "
     read NEW_BOOT_ARGS
     if [ ! -z "$NEW_BOOT_ARGS" ]; then
         UPDATED_BOOT_ARGS="$CURRENT_BOOT_ARGS $NEW_BOOT_ARGS"
-        xmlstarlet ed --inplace -u "//dict[key='7C436110-AB2A-4BBB-A880-FE41995C9F82']/dict[key='boot-args']/string" -v "$UPDATED_BOOT_ARGS" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/boot-args" -v "$UPDATED_BOOT_ARGS" "$CONFIG_PLIST"
     fi
 
     # SecureBootModel
     echo " "
     echo "SecureBootModel:"
+    current_sbm=$(get_current_value "Misc/Security/SecureBootModel")
+    echo "Current SecureBootModel: $current_sbm"
     echo "1) Disabled"
     echo "2) Default"
     echo "3) j137"
@@ -1934,7 +1954,7 @@ then
     echo "16) j215"
     echo "17) j185"
     echo "18) j185f"
-    echo -n "Select SecureBootModel (1-18): "
+    echo -n "Select SecureBootModel (1-18 or press Enter to keep current): "
     read SECURE_BOOT_MODEL
     case $SECURE_BOOT_MODEL in
         1) SBM="Disabled" ;;
@@ -1955,17 +1975,27 @@ then
         16) SBM="j215" ;;
         17) SBM="j185" ;;
         18) SBM="j185f" ;;
+        "") SBM="" ;;
         *) SBM="Default" ;;
     esac
     update_plist SecureBootModel "$SBM" "Misc/Security"
 
+    # ScanPolicy
+    echo " "
+    echo "ScanPolicy:"
+    current_scanpolicy=$(get_current_value "Misc/Security/ScanPolicy")
+    echo -n "Enter ScanPolicy (current: $current_scanpolicy, recommended: 0): "
+    read SCAN_POLICY
+    update_plist ScanPolicy "${SCAN_POLICY:-$current_scanpolicy}" "Misc/Security"
+
     # NVRAM Settings
     echo " "
     echo "NVRAM Settings:"
-    echo -n "Set csr-active-config to disable SIP? [Y/N]: "
+    current_sip=$(get_current_value "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/csr-active-config")
+    echo -n "Set csr-active-config to disable SIP? [Y/N] (current: $current_sip): "
     read DISABLE_SIP
     if [[ $DISABLE_SIP =~ ^[Yy]$ ]]; then
-        xmlstarlet ed --inplace -u "//dict[key='7C436110-AB2A-4BBB-A880-FE41995C9F82']/dict[key='csr-active-config']/data" -v "FF0F0000" "$CONFIG_PLIST"
+        xmlstarlet ed --inplace -u "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/csr-active-config" -v "FF0F0000" "$CONFIG_PLIST"
     fi
 
     # GPU Configuration
@@ -1982,7 +2012,7 @@ then
             ;;
         2)  # AMD GPU
             xmlstarlet ed --inplace -u "DeviceProperties/Add/PciRoot(0x0)/Pci(0x1,0x0)/device-id" -v "67DF0000" "$CONFIG_PLIST"
-            xmlstarlet ed --inplace -u "//dict[key='7C436110-AB2A-4BBB-A880-FE41995C9F82']/dict[key='agdpmod']/string" -v "pikera" "$CONFIG_PLIST"
+            xmlstarlet ed --inplace -u "NVRAM/Add/7C436110-AB2A-4BBB-A880-FE41995C9F82/agdpmod" -v "pikera" "$CONFIG_PLIST"
             ;;
         3)  # NVIDIA GPU
             xmlstarlet ed --inplace -u "DeviceProperties/Add/PciRoot(0x0)/Pci(0x1,0x0)/device-id" -v "13C20000" "$CONFIG_PLIST"
@@ -2029,19 +2059,23 @@ then
     # UEFI Settings
     echo " "
     echo "UEFI Settings:"
-    echo -n "Enable ProvideConsoleGop? [Y/N]: "
+    current_consolegop=$(get_current_value "UEFI/Output/ProvideConsoleGop")
+    echo -n "Enable ProvideConsoleGop? [Y/N] (current: $current_consolegop): "
     read ENABLE_CONSOLE_GOP
     if [[ $ENABLE_CONSOLE_GOP =~ ^[Yy]$ ]]; then
         xmlstarlet ed --inplace -u "UEFI/Output/ProvideConsoleGop" -v "true" "$CONFIG_PLIST"
+    elif [[ $ENABLE_CONSOLE_GOP =~ ^[Nn]$ ]]; then
+        xmlstarlet ed --inplace -u "UEFI/Output/ProvideConsoleGop" -v "false" "$CONFIG_PLIST"
     fi
 
-    echo -n "Set ResizeGpuBars to -1? [Y/N]: "
+    current_gpubars=$(get_current_value "UEFI/Quirks/ResizeGpuBars")
+    echo -n "Set ResizeGpuBars to -1? [Y/N] (current: $current_gpubars): "
     read RESIZE_GPU_BARS
     if [[ $RESIZE_GPU_BARS =~ ^[Yy]$ ]]; then
         xmlstarlet ed --inplace -u "UEFI/Quirks/ResizeGpuBars" -v "-1" "$CONFIG_PLIST"
     fi
 
-    # Save changes
+# Save changes
     echo " "
     echo "Saving changes..."
     umount /mnt/opencore >> ${LOGFILE} 2>> ${LOGFILE}
@@ -2049,7 +2083,34 @@ then
     losetup -d ${LOOPDEV} >> ${LOGFILE} 2>> ${LOGFILE}
 
     echo "Extended OpenCore configuration completed successfully."
-    echo "Please restart your Proxmox VM to apply the changes."
+    echo "Please note that these changes will apply to new VMs created with this ISO."
+    echo "For existing VMs, you'll need to update their configuration manually."
+    echo "Would you like to update an existing VM with these changes? [Y/N]: "
+    read UPDATE_EXISTING_VM
+
+    if [[ $UPDATE_EXISTING_VM =~ ^[Yy]$ ]]; then
+        echo "Please enter the ID of the VM you want to update: "
+        read VM_ID
+        if [ -f "/etc/pve/qemu-server/${VM_ID}.conf" ]; then
+            # Update the existing VM's configuration
+            sed -i "s|file=.*opencore-osx-proxmox-vm.iso|file=${ISODIR}/opencore-osx-proxmox-vm.iso|g" "/etc/pve/qemu-server/${VM_ID}.conf"
+            echo "VM ${VM_ID} has been updated to use the new OpenCore configuration."
+            echo "Please restart the VM for changes to take effect."
+        else
+            echo "VM with ID ${VM_ID} not found. Please check the ID and try again."
+        fi
+    fi
+
+    echo " "
+    echo "Do you want to create a new VM with this configuration? [Y/N]: "
+    read CREATE_NEW_VM
+
+    if [[ $CREATE_NEW_VM =~ ^[Yy]$ ]]; then
+        echo "Please run the appropriate option from the main menu to create a new macOS VM."
+    fi
+
+    echo " "
+    echo "Configuration process completed. Returning to main menu."
     echo " "
 fi
 
