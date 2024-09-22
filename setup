@@ -1823,6 +1823,212 @@ do
 ################################################################################################################################################################################################
 ################################################################################################################################################################################################
 ################################################################################################################################################################################################
+if [ ${OPT} -eq 206 ]
+then
+    clear
+    LOGFILE=${LOGDIR}/extended-oc-config.log
+
+    echo " "
+    echo "Extended OpenCore config.plist Customization"
+    echo " "
+
+    LOOPDEV=`losetup -f --show -P ${ISODIR}/opencore-osx-proxmox-vm.iso 2>> ${LOGFILE}`
+
+    mkdir -p /mnt/opencore > ${LOGFILE} 2>> ${LOGFILE}
+    mount ${LOOPDEV}p1 /mnt/opencore >> ${LOGFILE} 2>> ${LOGFILE}
+
+    if [ ! -e /mnt/opencore/EFI/OC/config.plist.backup ]
+    then
+        cp -v /mnt/opencore/EFI/OC/config.plist /mnt/opencore/EFI/OC/config.plist.backup >> ${LOGFILE} 2>> ${LOGFILE}
+    fi
+
+    # Function to update plist value
+    update_plist() {
+        key=$1
+        value=$2
+        section=$3
+        /usr/bin/plutil -replace "$section:$key" -string "$value" /mnt/opencore/EFI/OC/config.plist
+    }
+
+    # SMBIOS Settings
+    echo "SMBIOS Settings:"
+    echo -n "Enter SystemProductName (e.g., iMacPro1,1): "
+    read SYSTEM_PRODUCT_NAME
+    update_plist SystemProductName "$SYSTEM_PRODUCT_NAME" "PlatformInfo:Generic"
+
+    echo -n "Enter SystemSerialNumber: "
+    read SYSTEM_SERIAL_NUMBER
+    update_plist SystemSerialNumber "$SYSTEM_SERIAL_NUMBER" "PlatformInfo:Generic"
+
+    # Kernel Quirks
+    echo " "
+    echo "Kernel Quirks:"
+    echo -n "Enable AppleXcpmCfgLock? [Y/N]: "
+    read XCPM_CFG_LOCK
+    if [[ $XCPM_CFG_LOCK =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -replace "Kernel:Quirks:AppleXcpmCfgLock" -bool true /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    echo -n "Enable AppleCpuPmCfgLock? [Y/N]: "
+    read CPU_PM_CFG_LOCK
+    if [[ $CPU_PM_CFG_LOCK =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -replace "Kernel:Quirks:AppleCpuPmCfgLock" -bool true /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    # Booter Quirks
+    echo " "
+    echo "Booter Quirks:"
+    echo -n "Enable DevirtualiseMmio? [Y/N]: "
+    read DEVIRTUALISE_MMIO
+    if [[ $DEVIRTUALISE_MMIO =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -replace "Booter:Quirks:DevirtualiseMmio" -bool true /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    # Boot Args
+    echo " "
+    echo "Boot Arguments:"
+    CURRENT_BOOT_ARGS=$(/usr/bin/plutil -extract "NVRAM:Add:7C436110-AB2A-4BBB-A880-FE41995C9F82:boot-args" raw /mnt/opencore/EFI/OC/config.plist)
+    echo "Current boot-args: $CURRENT_BOOT_ARGS"
+    echo -n "Enter additional boot-args (or press Enter to keep current): "
+    read NEW_BOOT_ARGS
+    if [ ! -z "$NEW_BOOT_ARGS" ]; then
+        UPDATED_BOOT_ARGS="$CURRENT_BOOT_ARGS $NEW_BOOT_ARGS"
+        /usr/bin/plutil -replace "NVRAM:Add:7C436110-AB2A-4BBB-A880-FE41995C9F82:boot-args" -string "$UPDATED_BOOT_ARGS" /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    # SecureBootModel
+    echo " "
+    echo "SecureBootModel:"
+    echo "1) Disabled"
+    echo "2) Default"
+    echo "3) j137"
+    echo "4) j680"
+    echo "5) j132"
+    echo "6) j174"
+    echo "7) j140k"
+    echo "8) j780"
+    echo "9) j213"
+    echo "10) j140a"
+    echo "11) j152f"
+    echo "12) j160"
+    echo "13) j230k"
+    echo "14) j214k"
+    echo "15) j223"
+    echo "16) j215"
+    echo "17) j185"
+    echo "18) j185f"
+    echo -n "Select SecureBootModel (1-18): "
+    read SECURE_BOOT_MODEL
+    case $SECURE_BOOT_MODEL in
+        1) SBM="Disabled" ;;
+        2) SBM="Default" ;;
+        3) SBM="j137" ;;
+        4) SBM="j680" ;;
+        5) SBM="j132" ;;
+        6) SBM="j174" ;;
+        7) SBM="j140k" ;;
+        8) SBM="j780" ;;
+        9) SBM="j213" ;;
+        10) SBM="j140a" ;;
+        11) SBM="j152f" ;;
+        12) SBM="j160" ;;
+        13) SBM="j230k" ;;
+        14) SBM="j214k" ;;
+        15) SBM="j223" ;;
+        16) SBM="j215" ;;
+        17) SBM="j185" ;;
+        18) SBM="j185f" ;;
+        *) SBM="Default" ;;
+    esac
+    update_plist SecureBootModel "$SBM" "Misc:Security"
+
+    # NVRAM Settings
+    echo " "
+    echo "NVRAM Settings:"
+    echo -n "Set csr-active-config to disable SIP? [Y/N]: "
+    read DISABLE_SIP
+    if [[ $DISABLE_SIP =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -replace "NVRAM:Add:7C436110-AB2A-4BBB-A880-FE41995C9F82:csr-active-config" -data "FF0F0000" /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    # GPU Configuration
+    echo " "
+    echo "GPU Configuration:"
+    echo "1) Intel"
+    echo "2) AMD"
+    echo "3) NVIDIA"
+    echo -n "Select GPU type (1-3): "
+    read GPU_TYPE
+    case $GPU_TYPE in
+        1)  # Intel GPU
+            /usr/bin/plutil -replace "DeviceProperties:Add:PciRoot(0x0)/Pci(0x2,0x0):AAPL,ig-platform-id" -data "0300C89B" /mnt/opencore/EFI/OC/config.plist
+            ;;
+        2)  # AMD GPU
+            /usr/bin/plutil -replace "DeviceProperties:Add:PciRoot(0x0)/Pci(0x1,0x0):device-id" -data "67DF0000" /mnt/opencore/EFI/OC/config.plist
+            /usr/bin/plutil -replace "NVRAM:Add:7C436110-AB2A-4BBB-A880-FE41995C9F82:agdpmod" -string "pikera" /mnt/opencore/EFI/OC/config.plist
+            ;;
+        3)  # NVIDIA GPU
+            /usr/bin/plutil -replace "DeviceProperties:Add:PciRoot(0x0)/Pci(0x1,0x0):device-id" -data "13C20000" /mnt/opencore/EFI/OC/config.plist
+            ;;
+        *)  echo "Invalid option. Skipping GPU configuration." ;;
+    esac
+
+    # Kexts
+    echo " "
+    echo "Kext Configuration:"
+    echo -n "Enable VirtualSMC? [Y/N]: "
+    read ENABLE_VSMC
+    if [[ $ENABLE_VSMC =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -insert "Kernel:Add:0" -json '{"BundlePath":"VirtualSMC.kext","Comment":"","Enabled":true,"ExecutablePath":"Contents/MacOS/VirtualSMC","MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"}' /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    echo -n "Enable Lilu? [Y/N]: "
+    read ENABLE_LILU
+    if [[ $ENABLE_LILU =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -insert "Kernel:Add:1" -json '{"BundlePath":"Lilu.kext","Comment":"","Enabled":true,"ExecutablePath":"Contents/MacOS/Lilu","MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"}' /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    echo -n "Enable WhateverGreen? [Y/N]: "
+    read ENABLE_WEG
+    if [[ $ENABLE_WEG =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -insert "Kernel:Add:2" -json '{"BundlePath":"WhateverGreen.kext","Comment":"","Enabled":true,"ExecutablePath":"Contents/MacOS/WhateverGreen","MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"}' /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    # UEFI Settings
+    echo " "
+    echo "UEFI Settings:"
+    echo -n "Enable ProvideConsoleGop? [Y/N]: "
+    read ENABLE_CONSOLE_GOP
+    if [[ $ENABLE_CONSOLE_GOP =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -replace "UEFI:Output:ProvideConsoleGop" -bool true /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    echo -n "Set ResizeGpuBars to -1? [Y/N]: "
+    read RESIZE_GPU_BARS
+    if [[ $RESIZE_GPU_BARS =~ ^[Yy]$ ]]; then
+        /usr/bin/plutil -replace "UEFI:Quirks:ResizeGpuBars" -integer -1 /mnt/opencore/EFI/OC/config.plist
+    fi
+
+    # Save changes
+    echo " "
+    echo "Saving changes..."
+    umount /mnt/opencore >> ${LOGFILE} 2>> ${LOGFILE}
+    rmdir /mnt/opencore
+    losetup -d ${LOOPDEV} >> ${LOGFILE} 2>> ${LOGFILE}
+
+    echo "Extended OpenCore configuration completed successfully."
+    echo "Please restart your Proxmox VM to apply the changes."
+    echo " "
+    exit
+fi
+
+################################################################################################################################################################################################
+################################################################################################################################################################################################
+################################################################################################################################################################################################
+
+################################################################################################################################################################################################
+################################################################################################################################################################################################
+################################################################################################################################################################################################
 
 	## Option for QUIT PROGRAM
 	if [ ${OPT} -eq 0 ]
