@@ -2075,7 +2075,8 @@ then
     echo " "
     echo "Saving changes..."
     umount /mnt/opencore >> ${LOGFILE} 2>> ${LOGFILE}
-    rmdir /mnt/opencore
+    sleep 5  # Wait for 2 seconds to ensure the unmount is complete
+    rmdir /mnt/opencore 2>/dev/null  # Suppress error message if directory can't be removed
     losetup -d ${LOOPDEV} >> ${LOGFILE} 2>> ${LOGFILE}
 
     echo "Extended OpenCore configuration completed successfully."
