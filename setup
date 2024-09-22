@@ -187,6 +187,7 @@ do
 	echo " 203 - Remove Proxmox Subscription Notice"
 	echo " 204 - Enable macOS in Cloud (VultR Provider)"
 	echo " 205 - Customize Opencore config.plist"
+        echo " 206 - Customize Opencore advanced config.plist"
 	echo " "
 	echo " 0 - Quit (or press ENTER only)"
 	echo " "
