@@ -1827,6 +1827,14 @@ then
     clear
     LOGFILE=${LOGDIR}/extended-oc-config.log
 
+    # Check if xmlstarlet is installed, if not, install it
+    if ! command -v xmlstarlet &> /dev/null
+    then
+        echo "xmlstarlet is not installed. Installing now..."
+        apt-get update >> ${LOGFILE} 2>&1
+        apt-get install -y xmlstarlet >> ${LOGFILE} 2>&1
+    fi
+
     echo " "
     echo "Extended OpenCore config.plist Customization"
     echo " "
@@ -1841,23 +1849,33 @@ then
         cp -v /mnt/opencore/EFI/OC/config.plist /mnt/opencore/EFI/OC/config.plist.backup >> ${LOGFILE} 2>> ${LOGFILE}
     fi
 
+    CONFIG_PLIST="/mnt/opencore/EFI/OC/config.plist"
+
     # Function to update plist value
     update_plist() {
         key=$1
         value=$2
         section=$3
-        /usr/bin/plutil -replace "$section:$key" -string "$value" /mnt/opencore/EFI/OC/config.plist
+        
+        # Check if the key already exists
+        if xmlstarlet sel -t -v "$section/$key" "$CONFIG_PLIST" >/dev/null 2>&1; then
+            # Update existing key
+            xmlstarlet ed --inplace -u "$section/$key" -v "$value" "$CONFIG_PLIST"
+        else
+            # Add new key
+            xmlstarlet ed --inplace -s "$section" -t elem -n "$key" -v "$value" "$CONFIG_PLIST"
+        fi
     }
 
     # SMBIOS Settings
     echo "SMBIOS Settings:"
     echo -n "Enter SystemProductName (e.g., iMacPro1,1): "
     read SYSTEM_PRODUCT_NAME
-    update_plist SystemProductName "$SYSTEM_PRODUCT_NAME" "PlatformInfo:Generic"
+    update_plist SystemProductName "$SYSTEM_PRODUCT_NAME" "PlatformInfo/Generic"
 
     echo -n "Enter SystemSerialNumber: "
     read SYSTEM_SERIAL_NUMBER
-    update_plist SystemSerialNumber "$SYSTEM_SERIAL_NUMBER" "PlatformInfo:Generic"
+    update_plist SystemSerialNumber "$SYSTEM_SERIAL_NUMBER" "PlatformInfo/Generic"
 
     # Kernel Quirks
     echo " "
@@ -1865,13 +1883,13 @@ then
     echo -n "Enable AppleXcpmCfgLock? [Y/N]: "
     read XCPM_CFG_LOCK
     if [[ $XCPM_CFG_LOCK =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -replace "Kernel:Quirks:AppleXcpmCfgLock" -bool true /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -u "Kernel/Quirks/AppleXcpmCfgLock" -v "true" "$CONFIG_PLIST"
     fi
 
     echo -n "Enable AppleCpuPmCfgLock? [Y/N]: "
     read CPU_PM_CFG_LOCK
     if [[ $CPU_PM_CFG_LOCK =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -replace "Kernel:Quirks:AppleCpuPmCfgLock" -bool true /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -u "Kernel/Quirks/AppleCpuPmCfgLock" -v "true" "$CONFIG_PLIST"
     fi
 
     # Booter Quirks
@@ -1880,19 +1898,19 @@ then
     echo -n "Enable DevirtualiseMmio? [Y/N]: "
     read DEVIRTUALISE_MMIO
     if [[ $DEVIRTUALISE_MMIO =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -replace "Booter:Quirks:DevirtualiseMmio" -bool true /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -u "Booter/Quirks/DevirtualiseMmio" -v "true" "$CONFIG_PLIST"
     fi
 
     # Boot Args
     echo " "
     echo "Boot Arguments:"
-    CURRENT_BOOT_ARGS=$(/usr/bin/plutil -extract "NVRAM:Add:7C436110-AB2A-4BBB-A880-FE41995C9F82:boot-args" raw /mnt/opencore/EFI/OC/config.plist)
+    CURRENT_BOOT_ARGS=$(xmlstarlet sel -t -v "//dict[key='7C436110-AB2A-4BBB-A880-FE41995C9F82']/dict[key='boot-args']/string" "$CONFIG_PLIST")
     echo "Current boot-args: $CURRENT_BOOT_ARGS"
     echo -n "Enter additional boot-args (or press Enter to keep current): "
     read NEW_BOOT_ARGS
     if [ ! -z "$NEW_BOOT_ARGS" ]; then
         UPDATED_BOOT_ARGS="$CURRENT_BOOT_ARGS $NEW_BOOT_ARGS"
-        /usr/bin/plutil -replace "NVRAM:Add:7C436110-AB2A-4BBB-A880-FE41995C9F82:boot-args" -string "$UPDATED_BOOT_ARGS" /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -u "//dict[key='7C436110-AB2A-4BBB-A880-FE41995C9F82']/dict[key='boot-args']/string" -v "$UPDATED_BOOT_ARGS" "$CONFIG_PLIST"
     fi
 
     # SecureBootModel
@@ -1939,7 +1957,7 @@ then
         18) SBM="j185f" ;;
         *) SBM="Default" ;;
     esac
-    update_plist SecureBootModel "$SBM" "Misc:Security"
+    update_plist SecureBootModel "$SBM" "Misc/Security"
 
     # NVRAM Settings
     echo " "
@@ -1947,7 +1965,7 @@ then
     echo -n "Set csr-active-config to disable SIP? [Y/N]: "
     read DISABLE_SIP
     if [[ $DISABLE_SIP =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -replace "NVRAM:Add:7C436110-AB2A-4BBB-A880-FE41995C9F82:csr-active-config" -data "FF0F0000" /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -u "//dict[key='7C436110-AB2A-4BBB-A880-FE41995C9F82']/dict[key='csr-active-config']/data" -v "FF0F0000" "$CONFIG_PLIST"
     fi
 
     # GPU Configuration
@@ -1960,14 +1978,14 @@ then
     read GPU_TYPE
     case $GPU_TYPE in
         1)  # Intel GPU
-            /usr/bin/plutil -replace "DeviceProperties:Add:PciRoot(0x0)/Pci(0x2,0x0):AAPL,ig-platform-id" -data "0300C89B" /mnt/opencore/EFI/OC/config.plist
+            xmlstarlet ed --inplace -u "DeviceProperties/Add/PciRoot(0x0)/Pci(0x2,0x0)/AAPL,ig-platform-id" -v "0300C89B" "$CONFIG_PLIST"
             ;;
         2)  # AMD GPU
-            /usr/bin/plutil -replace "DeviceProperties:Add:PciRoot(0x0)/Pci(0x1,0x0):device-id" -data "67DF0000" /mnt/opencore/EFI/OC/config.plist
-            /usr/bin/plutil -replace "NVRAM:Add:7C436110-AB2A-4BBB-A880-FE41995C9F82:agdpmod" -string "pikera" /mnt/opencore/EFI/OC/config.plist
+            xmlstarlet ed --inplace -u "DeviceProperties/Add/PciRoot(0x0)/Pci(0x1,0x0)/device-id" -v "67DF0000" "$CONFIG_PLIST"
+            xmlstarlet ed --inplace -u "//dict[key='7C436110-AB2A-4BBB-A880-FE41995C9F82']/dict[key='agdpmod']/string" -v "pikera" "$CONFIG_PLIST"
             ;;
         3)  # NVIDIA GPU
-            /usr/bin/plutil -replace "DeviceProperties:Add:PciRoot(0x0)/Pci(0x1,0x0):device-id" -data "13C20000" /mnt/opencore/EFI/OC/config.plist
+            xmlstarlet ed --inplace -u "DeviceProperties/Add/PciRoot(0x0)/Pci(0x1,0x0)/device-id" -v "13C20000" "$CONFIG_PLIST"
             ;;
         *)  echo "Invalid option. Skipping GPU configuration." ;;
     esac
@@ -1978,19 +1996,34 @@ then
     echo -n "Enable VirtualSMC? [Y/N]: "
     read ENABLE_VSMC
     if [[ $ENABLE_VSMC =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -insert "Kernel:Add:0" -json '{"BundlePath":"VirtualSMC.kext","Comment":"","Enabled":true,"ExecutablePath":"Contents/MacOS/VirtualSMC","MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"}' /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -s "Kernel/Add" -t elem -n "dict" -v "" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "BundlePath" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "string" -v "VirtualSMC.kext" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "Enabled" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "true" -v "" \
+            "$CONFIG_PLIST"
     fi
 
     echo -n "Enable Lilu? [Y/N]: "
     read ENABLE_LILU
     if [[ $ENABLE_LILU =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -insert "Kernel:Add:1" -json '{"BundlePath":"Lilu.kext","Comment":"","Enabled":true,"ExecutablePath":"Contents/MacOS/Lilu","MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"}' /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -s "Kernel/Add" -t elem -n "dict" -v "" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "BundlePath" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "string" -v "Lilu.kext" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "Enabled" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "true" -v "" \
+            "$CONFIG_PLIST"
     fi
 
     echo -n "Enable WhateverGreen? [Y/N]: "
     read ENABLE_WEG
     if [[ $ENABLE_WEG =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -insert "Kernel:Add:2" -json '{"BundlePath":"WhateverGreen.kext","Comment":"","Enabled":true,"ExecutablePath":"Contents/MacOS/WhateverGreen","MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"}' /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -s "Kernel/Add" -t elem -n "dict" -v "" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "BundlePath" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "string" -v "WhateverGreen.kext" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "key" -v "Enabled" \
+            -s "Kernel/Add/dict[last()]" -t elem -n "true" -v "" \
+            "$CONFIG_PLIST"
     fi
 
     # UEFI Settings
@@ -1999,13 +2032,13 @@ then
     echo -n "Enable ProvideConsoleGop? [Y/N]: "
     read ENABLE_CONSOLE_GOP
     if [[ $ENABLE_CONSOLE_GOP =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -replace "UEFI:Output:ProvideConsoleGop" -bool true /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -u "UEFI/Output/ProvideConsoleGop" -v "true" "$CONFIG_PLIST"
     fi
 
     echo -n "Set ResizeGpuBars to -1? [Y/N]: "
     read RESIZE_GPU_BARS
     if [[ $RESIZE_GPU_BARS =~ ^[Yy]$ ]]; then
-        /usr/bin/plutil -replace "UEFI:Quirks:ResizeGpuBars" -integer -1 /mnt/opencore/EFI/OC/config.plist
+        xmlstarlet ed --inplace -u "UEFI/Quirks/ResizeGpuBars" -v "-1" "$CONFIG_PLIST"
     fi
 
     # Save changes
